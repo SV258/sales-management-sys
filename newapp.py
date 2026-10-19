@@ -2,6 +2,9 @@ import streamlit as st
 import mysql.connector
 import bcrypt
 import pandas as pd
+from sql_engine import show_sql_engine
+from sql_connection import get_sql_connection
+
 
 st.set_page_config(page_title="Sales Management System", layout="wide")
 
@@ -14,6 +17,30 @@ def get_connection():
         database="sales_management_sys"
     )
 
+def show_admin_sales_report(branch_id):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor(dictionary=True)
+        try:
+            cursor.execute(
+                "SELECT * FROM customer_sales WHERE branch_id = %s",
+                (branch_id,)
+            )
+            rows = cursor.fetchall()
+        finally:
+            cursor.close()
+    finally:
+        connection.close()
+
+    branch_names = {1:"Chennai",2:"Bangalore",3:"Hyderabad",4:"Delhi",5:"Mumbai",6:"pune",7:"Kolkata",8:"Ahmedabad"}
+    branch_name = branch_names.get(int(branch_id),"Unknown Branch")
+    st.subheader(f"{branch_name}Branch-Customer Sales Report")
+
+    if rows:
+        df = pd.DataFrame(rows)
+        st.dataframe(df, use_container_width=True)
+    else:
+        st.info("No sales found for your branch.")
 
 def show_customer_sales_report():
     connection = get_connection()
@@ -125,13 +152,131 @@ def show_payment_entry_form():
             if connection is not None:
                 connection.close()
 
+def show_financial_summary(branch, product, start_date, end_date):
+    branch_ids = {
+        "Chennai": 1,
+        "Bangalore": 2,
+        "Hyderabad": 3,
+        "Delhi": 4,
+        "Mumbai": 5,
+        "Pune": 6,
+        "Kolkata": 7,
+        "Ahmedabad": 8
+    }
+
+    query = """
+        SELECT
+            COALESCE(SUM(gross_sales), 0) AS total_revenue,
+            COALESCE(SUM(received_amount), 0) AS total_received,
+            COALESCE(SUM(pendind_amount), 0) AS total_pending
+        FROM customer_sales
+        WHERE 1 = 1
+    """
+
+    params = []
+
+    if branch != "All":
+        query += " AND branch_id = %s"
+        params.append(branch_ids[branch])
+
+    if product != "All":
+        query += " AND product_name = %s"
+        params.append(product)
+
+    if start_date is not None:
+        query += " AND date >= %s"
+        params.append(start_date)
+
+    if end_date is not None:
+        query += " AND date <= %s"
+        params.append(end_date)
+
+    connection = get_connection()
+
+    try:
+        cursor = connection.cursor(dictionary=True)
+        try:
+            cursor.execute(query, tuple(params))
+            result = cursor.fetchone()
+        finally:
+            cursor.close()
+    finally:
+        connection.close()
+
+    revenue = float(result["total_revenue"])
+    received = float(result["total_received"])
+    pending = float(result["total_pending"])
+
+    pending_pct = (
+        (pending / revenue) * 100 if revenue > 0 else 0
+    )
+
+    st.subheader("💵 Financial Summary")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Overall Revenue (Gross)", f"₹{revenue:,.2f}")
+
+    with col2:
+        st.metric("Total Received Amount", f"₹{received:,.2f}")
+
+    col3, col4 = st.columns(2)
+
+    with col3:
+        st.metric("Total Pending Amount", f"₹{pending:,.2f}")
+
+    with col4:
+        st.metric("Pending Collection %", f"{pending_pct:.2f}%")
+
+
+def show_super_admin_filters():
+    st.subheader("🔍 Filter Controls")
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        branch = st.selectbox(
+            "Branch Name",
+            ["All", "Chennai", "Bangalore", "Hyderabad",
+             "Delhi", "Mumbai", "Pune", "Kolkata", "Ahmedabad"]
+        )
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        try:
+            cursor.execute("""
+                SELECT DISTINCT product_name
+                FROM customer_sales
+                WHERE product_name IS NOT NULL
+                  AND product_name != ''
+                ORDER BY product_name
+            """)
+            products = [row[0] for row in cursor.fetchall()]
+        finally:
+            cursor.close()
+    finally:
+        connection.close()
+
+    with col2:
+        product = st.selectbox(
+            "Product Name",
+            ["All"] + products
+        )
+
+    with col3:
+        start_date = st.date_input("Start Date", value=None)
+
+    with col4:
+        end_date = st.date_input("End Date", value=None)
+
+    return branch, product, start_date, end_date
+
 st.title("Sales Management System")
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
-    st.subheader("Super Admin Login")
+    st.subheader("Sales Management System Login")
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
 
@@ -142,7 +287,7 @@ if not st.session_state.logged_in:
                 cursor = connection.cursor()
                 try:
                     cursor.execute(
-                        "SELECT password, role FROM users WHERE username = %s",
+                        "SELECT password, role,branch_id FROM users WHERE username = %s",
                         (username,)
                     )
                     user = cursor.fetchone()
@@ -158,6 +303,7 @@ if not st.session_state.logged_in:
                 st.session_state.logged_in = True
                 st.session_state.username = username
                 st.session_state.role = str(user[1]).strip()
+                st.session_state.branch_id =user[2]
                 st.rerun()
             else:
                 st.error("Invalid username or password")
@@ -167,23 +313,66 @@ if not st.session_state.logged_in:
             st.error(f"Password verification error: {error}")
 
 else:
+    if "role" not in st.session_state:
+        st.session_state.role = None
     st.success("Login successful!")
     st.write("Welcome:", st.session_state.username)
     st.write("Role:", st.session_state.role)
+    with st.sidebar:
+        st.title("Navigation")
 
+        page = st.radio(
+            "Go to",
+            [
+            "Dashboard & Reports",
+            "Record Creator",
+            "Advanced SQL Engine"
+            ]
+       )
     if st.session_state.role.lower().replace("_", " ") == "super admin":
-        st.header("Super Admin Dashboard")
-        try:
-            show_customer_sales_report()
-        except mysql.connector.Error as error:
-            st.error(f"Could not load Customer Sales Report: {error}")
-        st.divider()
-        show_new_sales_form()
-        st.divider()
-        show_payment_entry_form()
+        if page == "Dashboard & Reports":
+            st.header("Super Admin Dashboard")
 
+            try:
+                show_customer_sales_report()
+            except mysql.connector.Error as error:
+                st.error(f"Could Not Load Customer Sales Report: {error}")
+
+        elif page == "Record Creator":
+            st.header("Record Creator")
+            branch, product, start_date, end_date = show_super_admin_filters()
+            show_financial_summary(branch, product, start_date, end_date)
+            st.divider()
+            show_new_sales_form()
+            st.divider()
+            st.subheader("Payment Entry Form")
+            show_payment_entry_form()
+        elif page == "Advanced SQL Engine":
+            st.header("Advanced SQL Engine")
+            show_sql_engine(get_sql_connection)
+    elif st.session_state.role.lower().strip() == "admin":
+        if page == "Dashboard & Reports":
+            st.header("Admin Dashboard")
+
+            branch_id = st.session_state.branch_id
+
+            if branch_id is not None:
+                st.success("Admin Login Successful")
+                st.write("Welcome:", st.session_state.username)
+                st.write("Your branch ID:", branch_id)
+                show_admin_sales_report(branch_id)
+            else:
+                st.warning("No branch assigned to this admin.")
+
+        elif page == "Record Creator":
+            st.header("Record Creator")
+            st.info("Branch Admin operations will be added here.")
+
+        elif page == "Advanced SQL Engine":
+            st.header("Advanced SQL Engine")
+            st.warning("This feature is restricted to Super Admin.")
     else:
-        st.warning("Only Super Admin can view the Customer Sales Report.")
+            st.error("AccessDenied:invalid user role.")
 
     if st.button("Logout"):
         st.session_state.clear()
