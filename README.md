@@ -56,3 +56,74 @@ Suganthi Veeraraju
 
 ## Project Type
 Data Analytics and Sales Management System
+
+## User Roles and Access Control
+
+The Sales Management System supports role-based access for different users.
+
+### Super Admin
+- View sales records across all branches.
+- Access sales reports and financial summaries.
+- Filter records by branch, product and date range.
+- Access sales and payment entry functionality.
+- Use the Advanced SQL Engine for reporting and analysis.
+
+### Branch Admin
+- Log in using assigned credentials.
+- View customer sales records for their assigned branch.
+- Access branch-specific reporting information.
+
+## Sales and Payment Management
+
+The application supports recording customer sales and payments using Streamlit forms connected to a MySQL database.
+
+MySQL triggers help update received payment amounts when new payment records are inserted.
+
+## Financial Reporting and Filters
+
+The reporting interface includes:
+
+- Branch Name filter
+- Product Name filter
+- Start Date filter
+- End Date filter
+- Financial summaries based on the selected filters
+- Customer sales reports
+
+## Advanced SQL Engine
+
+The Advanced SQL Engine provides an interface for selecting saved SQL queries and executing supported read-only queries.
+
+This feature helps users explore sales data, analyse business performance and practise SQL reporting.
+
+## Project File Structure
+
+| File | Purpose |
+|---|---|
+| `newapp.py` | Main Streamlit application, login and dashboards |
+| `sql_connection.py` | MySQL database connection |
+| `sql_engine.py` | Advanced SQL Engine functionality |
+| `sales_management_queries.sql` | SQL queries used in the project |
+| `README.md` | Project documentation |
+| `.gitignore` | Excludes local configuration and sensitive files from Git |
+
+## Security Practices
+
+- Database credentials are stored locally using Streamlit secrets.
+- The secrets file is excluded from Git using `.gitignore`.
+- Password verification uses hashing rather than plain-text comparison.
+- Branch-specific reports restrict the data shown to branch administrators.
+
+**Note:** This project is a learning and portfolio application. Further security review and testing are recommended before production deployment.
+
+## Future Improvements
+
+- Add automated application tests.
+- Improve error handling and input validation.
+- Add data export options where required.
+- Enhance dashboard visualisations.
+- Prepare deployment documentation.
+
+## Project Purpose
+
+This project demonstrates practical skills in Python programming, MySQL database management, SQL reporting, Streamlit application development, role-based access control and Git version control.
